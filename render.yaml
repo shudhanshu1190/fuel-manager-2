@@ -1,0 +1,33 @@
+services:
+  # FuelLedger Backend Web Service
+  - type: web
+    name: fuelledger-backend
+    env: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false # Forces Render to prompt the user for this value
+      - key: JWT_SECRET
+        generateValue: true # Render will automatically generate a secure key
+
+  # FuelLedger Frontend Static Site
+  - type: web
+    name: fuelledger-frontend
+    env: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    publishDir: dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: fuelledger-backend
+          property: url
