@@ -16,7 +16,17 @@ import auditRoutes from './routes/audit.js';
 dotenv.config();
 
 // Connect to MongoDB
-connectDB();
+connectDB().then(async () => {
+  try {
+    const { default: User } = await import('./models/User.js');
+    const result = await User.deleteMany({ role: { $ne: 'Owner' } });
+    if (result.deletedCount > 0) {
+      console.log(`Database Cleanup: Deleted ${result.deletedCount} non-Owner user accounts.`);
+    }
+  } catch (err) {
+    console.error('Error cleaning up non-Owner users:', err.message);
+  }
+});
 
 const app = express();
 

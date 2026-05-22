@@ -1,5 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import User from '../models/User.js';
 import { protect, restrictTo } from '../middleware/auth.js';
 
@@ -25,6 +26,10 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials or user is inactive' });
     }
 
+    if (user.role !== 'Owner') {
+      return res.status(403).json({ message: 'Access denied: Only Owner accounts can log in.' });
+    }
+
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials' });
@@ -39,6 +44,73 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error during login', error: error.message });
+  }
+});
+
+// Google Auth Login
+router.post('/google-login', async (req, res) => {
+  const { idToken } = req.body;
+
+  if (!idToken) {
+    return res.status(400).json({ message: 'Google ID token is required' });
+  }
+
+  try {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const ownerEmail = process.env.OWNER_EMAIL;
+
+    if (!clientId || !ownerEmail) {
+      return res.status(500).json({
+        message: 'Google Auth (GOOGLE_CLIENT_ID) or Owner Email (OWNER_EMAIL) environment variables are not configured.'
+      });
+    }
+
+    const verificationClient = new OAuth2Client(clientId);
+    const ticket = await verificationClient.verifyIdToken({
+      idToken,
+      audience: clientId,
+    });
+    const payload = ticket.getPayload();
+    const { email, name } = payload;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Google ID token does not contain email.' });
+    }
+
+    if (email.toLowerCase() !== ownerEmail.toLowerCase()) {
+      return res.status(403).json({ message: `Access denied: ${email} is not authorized as the Owner.` });
+    }
+
+    // Find or create Owner user in database
+    let user = await User.findOne({ role: 'Owner' });
+    if (!user) {
+      user = new User({
+        name: name || 'Owner',
+        username: email.toLowerCase(),
+        password: Math.random().toString(36).substring(2) + Date.now().toString(36), // Random password placeholder
+        role: 'Owner',
+        active: true,
+      });
+      await user.save();
+    } else {
+      // Update name and email if they changed
+      user.name = name || user.name;
+      user.username = email.toLowerCase();
+      if (!user.active) {
+        user.active = true;
+      }
+      await user.save();
+    }
+
+    res.json({
+      _id: user._id,
+      name: user.name,
+      username: user.username,
+      role: user.role,
+      token: generateToken(user._id),
+    });
+  } catch (error) {
+    res.status(401).json({ message: 'Invalid Google token', error: error.message });
   }
 });
 

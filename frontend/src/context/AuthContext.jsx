@@ -45,6 +45,14 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
+  const loginWithGoogle = async (idToken) => {
+    const data = await api.post('/auth/google-login', { idToken });
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data));
+    setUser(data);
+    return data;
+  };
+
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -77,6 +85,7 @@ export const AuthProvider = ({ children }) => {
         activeShift,
         shiftLoading,
         login,
+        loginWithGoogle,
         logout,
         fetchActiveShift,
         openShift: handleOpenShift,
